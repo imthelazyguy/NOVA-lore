@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Plasma Rifle",
+    "description": "High-energy weapon for soldiers.",
+    "class": "Soldier",
+    "power": 15,
+    "price": 150
+  },
+  {
+    "name": "Medkit",
+    "description": "Restores HP during quests.",
+    "class": "Medic",
+    "power": 0,
+    "heal": 25,
+    "price": 50
+  },
+  {
+    "name": "Tech Drone",
+    "description": "Automates resource collection.",
+    "class": "Engineer",
+    "power": 0,
+    "boost": "gather",
+    "price": 120
+  },
+  {
+    "name": "Nano Armor",
+    "description": "Increases survivability.",
+    "class": "All",
+    "defense": 10,
+    "price": 100
+  }
+]
