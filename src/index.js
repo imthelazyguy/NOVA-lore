@@ -1,18 +1,15 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const admin = require('firebase-admin');
 
-
-
-// Initialize Firebase Admin SDK
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
 if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
   console.error("FIREBASE_SERVICE_ACCOUNT env variable is missing.");
   process.exit(1);
 }
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(serviceAccount),
 });
 
 const db = admin.firestore();
