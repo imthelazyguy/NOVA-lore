@@ -56,50 +56,58 @@ client.on('messageCreate', async (message) => {
   }
 
   // XP tracking applies only after command execution (if allowed)
-  try {
-    const configRef = db.collection('config').doc('xp');
-    const configSnap = await configRef.get();
-    const config = configSnap.exists ? configSnap.data() : {
-      enabledTextChannels: [],
-      blacklist: { users: [], roles: [] }
-    };
+ try {
+  const configRef = db.collection('config').doc('xp');
+  const configSnap = await configRef.get();
+  const config = configSnap.exists ? configSnap.data() : {
+    enabledTextChannels: [],
+    blacklist: { users: [], roles: [] }
+  };
 
-    const channelId = message.channel.id;
-    if (!config.enabledTextChannels.includes(channelId)) return;
-    if (config.blacklist.users?.includes(userId)) return;
+  const userId = message.author.id;
+  const channelId = message.channel.id;
 
-    const member = await message.guild.members.fetch(userId);
-    if (member.roles.cache.some(role => config.blacklist.roles?.includes(role.id))) return;
+  // Blacklist: skip if user or role is blacklisted
+  if (config.blacklist?.users?.includes(userId)) return;
 
-    const userRef = db.collection('players').doc(userId);
-    const userSnap = await userRef.get();
-    const userData = userSnap.exists ? userSnap.data() : {
-      name: message.author.username,
-      xp: 0,
-      currency: 0,
-      blacklisted: false,
-      voiceTime: 0
-    };
+  const member = await message.guild.members.fetch(userId);
+  if (member.roles.cache.some(role => config.blacklist.roles?.includes(role.id))) return;
 
-    // XP multiplier logic
-    let multiplier = 1;
-    if (config.globalMultiplier) multiplier *= config.globalMultiplier;
-    if (userData.multiplier) multiplier *= userData.multiplier;
-    if (userData.inventory) {
-      for (const item of userData.inventory) {
-        if (item.type === 'xpBoost') multiplier *= item.multiplier || 1;
-      }
+  // Channel filter: only apply if config specifies allowed channels
+  const textChannelWhitelist = config.enabledTextChannels || [];
+  const useChannelLimit = Array.isArray(textChannelWhitelist) && textChannelWhitelist.length > 0;
+
+  if (useChannelLimit && !textChannelWhitelist.includes(channelId)) return;
+
+  // Get player data
+  const userRef = db.collection('players').doc(userId);
+  const userSnap = await userRef.get();
+  const userData = userSnap.exists ? userSnap.data() : {
+    name: message.author.username,
+    xp: 0,
+    currency: 0,
+    blacklisted: false,
+    voiceTime: 0
+  };
+
+  // XP multiplier logic
+  let multiplier = 1;
+  if (config.globalMultiplier) multiplier *= config.globalMultiplier;
+  if (userData.multiplier) multiplier *= userData.multiplier;
+  if (userData.inventory) {
+    for (const item of userData.inventory) {
+      if (item.type === 'xpBoost') multiplier *= item.multiplier || 1;
     }
-
-    const xpEarned = Math.floor((Math.random() * 5 + 1) * multiplier);
-    userData.xp += xpEarned;
-    userData.currency = Math.floor(userData.xp / 3);
-    userData.lastMessage = new Date();
-
-    await userRef.set(userData);
-  } catch (err) {
-    console.error('❌ XP Tracking error:', err.message);
   }
-});
+
+  const xpEarned = Math.floor((Math.random() * 5 + 1) * multiplier);
+  userData.xp += xpEarned;
+  userData.currency = Math.floor(userData.xp / 3);
+  userData.lastMessage = new Date();
+
+  await userRef.set(userData);
+} catch (err) {
+  console.error('❌ XP tracking error:', err);
+}
 
 client.login(process.env.DISCORD_TOKEN);
