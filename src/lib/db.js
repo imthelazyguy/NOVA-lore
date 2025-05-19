@@ -1,12 +1,16 @@
-const admin = require('firebase-admin');
-const path = require('path');
+const admin = require("firebase-admin");
 
-if (!admin.apps.length) {
-  const serviceAccount = require(path.resolve(__dirname, '../../serviceAccountKey.json'));
+try {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(serviceAccount),
   });
+
+  console.log("Firebase initialized successfully.");
+} catch (error) {
+  console.error("Failed to initialize Firebase:", error);
+  process.exit(1); // Exit if Firebase fails
 }
 
 const db = admin.firestore();
@@ -37,6 +41,7 @@ async function updateCharacter(userId, data) {
 
 module.exports = {
   getCharacter,
+  admin,
   createCharacter,
   updateCharacter
 };
