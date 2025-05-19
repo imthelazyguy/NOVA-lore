@@ -1,41 +1,29 @@
+const { Client, GatewayIntentBits } = require('discord.js');
+const admin = require('firebase-admin');
 
-require('dotenv').config();
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const { initializeFirestore } = require('./lib/db');
+// Initialize Firebase Admin SDK
+const serviceAccount = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+const db = admin.firestore();
 
+// Initialize Discord Client
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-client.commands = new Collection();
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = require(filePath);
-  client.commands.set(command.data.name, command);
-}
-
-client.on('ready', () => {
-  console.log(`🤖 Logged in as ${client.user.tag}`);
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user.tag}`);
 });
 
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
-  try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(error);
-    await interaction.reply({ content: 'There was an error executing this command.', ephemeral: true });
+// Example command handler
+client.on('messageCreate', async (message) => {
+  if (message.content === '!ping') {
+    message.reply('Pong!');
   }
+  // Add your existing command handlers here
 });
 
-initializeFirestore();
+// Login to Discord
 client.login(process.env.DISCORD_TOKEN);
