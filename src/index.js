@@ -32,4 +32,9 @@ client.on('messageCreate', async (message) => {
 });
 
 // Login to Discord
+if (!process.env.DISCORD_TOKEN) {
+  console.error("❌ DISCORD_TOKEN is missing in environment variables!");
+  process.exit(1);
+}
+
 client.login(process.env.DISCORD_TOKEN);
