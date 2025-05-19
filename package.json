@@ -1,14 +1,13 @@
 {
-  "name": "nova-lore-bot",
+  "name": "nova-lore",
   "version": "1.0.0",
-  "description": "A sci-fi RPG Discord bot with PvP, NPCs, and quests.",
-  "main": "src/index.js",
+  "description": "A Discord bot integrated with Firebase",
+  "main": "index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.11.0",
-    "dotenv": "^16.3.1",
     "firebase-admin": "^11.10.1"
   }
 }
