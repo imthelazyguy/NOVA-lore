@@ -23,13 +23,38 @@ client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
+const fs = require('fs');
+const path = require('path');
+const { Collection } = require('discord.js');
+
+client.commands = new Collection();
+const commandFiles = fs.readdirSync(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'));
+
+for (const file of commandFiles) {
+  const command = require(`./commands/${file}`);
+  if (command.name && typeof command.execute === 'function') {
+    client.commands.set(command.name, command);
+  } else {
+    console.warn(`[WARN] Invalid command format in ${file}`);
+  }
+}
+
 client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
 
   // Command example
-  if (message.content === '!ping') {
-    return message.reply('Pong!');
-  }
+  const args = message.content.slice(1).trim().split(/ +/);
+const commandName = args.shift().toLowerCase();
+
+const command = client.commands.get(commandName);
+if (!command) return;
+
+try {
+  await command.execute(message, args, db);
+} catch (error) {
+  console.error(`❌ Error running ${commandName}:`, error);
+  message.reply('There was an error executing that command.');
+}
 
   // XP TRACKING BLOCK (moved inside the async handler)
   const userId = message.author.id;
