@@ -109,5 +109,6 @@ client.on('messageCreate', async (message) => {
 } catch (err) {
   console.error('❌ XP tracking error:', err);
 }
+});
 
 client.login(process.env.DISCORD_TOKEN);
