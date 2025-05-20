@@ -3,10 +3,10 @@ const fs = require('fs');
 const path = require('path');
 require('./keepAlive');
 
-// Load Firestore DB instance
+// Load Firestore DB
 const { db } = require('./lib/firebase');
 
-// Validate required environment variables
+// Validate environment
 if (!process.env.FIREBASE_SERVICE_ACCOUNT || !process.env.DISCORD_TOKEN) {
   console.error("❌ Missing FIREBASE_SERVICE_ACCOUNT or DISCORD_TOKEN.");
   process.exit(1);
@@ -21,7 +21,7 @@ const client = new Client({
   ]
 });
 
-// Load commands from ./commands folder
+// Load commands
 client.commands = new Collection();
 const commandFiles = fs
   .readdirSync(path.join(__dirname, 'commands'))
@@ -42,14 +42,22 @@ client.once('ready', () => {
 
 // Message handler
 client.on('messageCreate', async (message) => {
-  if (!message.guild || message.author.bot || !message.content.startsWith('!')) return;
+  if (!message.guild || message.author.bot) return;
 
-  const args = message.content.slice(1).trim().split(/ +/);
+  // Get prefix from DB
+  const guildRef = db.collection('config').doc(`guild_${message.guild.id}`);
+  const doc = await guildRef.get();
+  const guildConfig = doc.exists ? doc.data() : {};
+  const prefix = guildConfig.prefix || '!';
+
+  if (!message.content.startsWith(prefix)) return;
+
+  // Parse command
+  const args = message.content.slice(prefix.length).trim().split(/ +/);
   const commandName = args.shift().toLowerCase();
   const command = client.commands.get(commandName);
   const userId = message.author.id;
 
-  // Execute the command if found
   if (command) {
     try {
       await command.execute(message, args, db);
@@ -59,7 +67,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // XP tracking logic
+  // XP tracking
   try {
     const configRef = db.collection('config').doc('xp');
     const configSnap = await configRef.get();
@@ -70,19 +78,14 @@ client.on('messageCreate', async (message) => {
 
     const channelId = message.channel.id;
 
-    // Skip blacklisted users
     if (config.blacklist?.users?.includes(userId)) return;
 
     const member = await message.guild.members.fetch(userId);
     if (member.roles.cache.some(role => config.blacklist.roles?.includes(role.id))) return;
 
-    // Skip if XP is restricted to specific channels and current isn't in list
-    const textChannelWhitelist = config.enabledTextChannels || [];
-    const useChannelLimit = Array.isArray(textChannelWhitelist) && textChannelWhitelist.length > 0;
+    const useChannelLimit = Array.isArray(config.enabledTextChannels) && config.enabledTextChannels.length > 0;
+    if (useChannelLimit && !config.enabledTextChannels.includes(channelId)) return;
 
-    if (useChannelLimit && !textChannelWhitelist.includes(channelId)) return;
-
-    // Load or create user data
     const userRef = db.collection('players').doc(userId);
     const userSnap = await userRef.get();
     const userData = userSnap.exists ? userSnap.data() : {
@@ -93,16 +96,13 @@ client.on('messageCreate', async (message) => {
       voiceTime: 0
     };
 
-    // XP calculation
     let multiplier = 1;
     if (config.globalMultiplier) multiplier *= config.globalMultiplier;
     if (userData.multiplier) multiplier *= userData.multiplier;
 
     if (userData.inventory) {
       for (const item of userData.inventory) {
-        if (item.type === 'xpBoost') {
-          multiplier *= item.multiplier || 1;
-        }
+        if (item.type === 'xpBoost') multiplier *= item.multiplier || 1;
       }
     }
 
@@ -117,5 +117,4 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Start the bot
 client.login(process.env.DISCORD_TOKEN);
