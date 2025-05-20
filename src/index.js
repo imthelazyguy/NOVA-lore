@@ -10,10 +10,7 @@ if (!process.env.FIREBASE_SERVICE_ACCOUNT || !process.env.DISCORD_TOKEN) {
 }
 
 // Firebase setup
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-const db = admin.firestore();
+const { db } = require('./lib/firebase');
 
 // Discord client
 const client = new Client({
