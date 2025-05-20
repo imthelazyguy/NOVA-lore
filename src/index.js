@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
+require('./keepAlive');
 
 // Validate ENV
 if (!process.env.FIREBASE_SERVICE_ACCOUNT || !process.env.DISCORD_TOKEN) {
