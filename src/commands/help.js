@@ -1,9 +1,11 @@
 module.exports = {
   name: 'help',
-  description: 'Lists all available commands',
+  description: 'Lists all available commands.',
   async execute(message) {
     const commands = message.client.commands;
-    const helpText = commands.map(cmd => `**!${cmd.name}** – ${cmd.description || 'No description'}`).join('\n');
+    const helpText = commands.map(cmd =>
+      `**!${cmd.name}** - ${cmd.description || 'No description'}`
+    ).join('\n');
 
     message.channel.send({
       embeds: [{
