@@ -1,30 +1,23 @@
-const { SlashCommandBuilder } = require('discord.js');
-const shop = require('../data/shop.json');
-const { getCharacter, updateCharacter } = require('../lib/db');
+// src/commands/economy/shop.js
+const { EmbedBuilder } = require('discord.js');
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('shop')
-    .setDescription('Browse and buy items from the galactic shop')
-    .addStringOption(opt => opt.setName('buy').setDescription('Name of the item to purchase')),
+  name: 'shop',
+  description: 'View items available for purchase.',
+  async execute(message, args, db) {
+    const snap = await db.collection('shopItems').get();
+    if (snap.empty) return message.reply('🛒 The shop is empty.');
 
-  async execute(interaction) {
-    const itemName = interaction.options.getString('buy');
-    const char = await getCharacter(interaction.user.id);
-    if (!char) return interaction.reply('You need a character first. Use /character.');
+    const embed = new EmbedBuilder()
+      .setTitle('🛒 NOVA Shop')
+      .setColor(0x00aeff)
+      .setDescription('Use `!buy <itemID>` to purchase.');
 
-    if (!itemName) {
-      const catalog = shop.map(item => `**${item.name}** (${item.price} credits): ${item.description}`).join('\n');
-      return interaction.reply(`🛒 **Galactic Shop**\n${catalog}`);
-    }
+    snap.docs.forEach(doc => {
+      const { name, description, price } = doc.data();
+      embed.addFields({ name: `${doc.id} — ${name}`, value: `${description}\n💰 ${price} coins` });
+    });
 
-    const item = shop.find(i => i.name.toLowerCase() === itemName.toLowerCase());
-    if (!item) return interaction.reply('Item not found.');
-    if (char.credits < item.price) return interaction.reply('Not enough credits.');
-
-    char.credits -= item.price;
-    char.inventory.push(item.name);
-    await updateCharacter(interaction.user.id, { credits: char.credits, inventory: char.inventory });
-    return interaction.reply(`You purchased **${item.name}** for ${item.price} credits.`);
+    message.channel.send({ embeds: [embed] });
   }
 };
