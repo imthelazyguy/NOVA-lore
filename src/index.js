@@ -2,52 +2,65 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 require('./keepAlive');
-
-// Load Firestore DB
 const { db } = require('./lib/firebase');
 
-// Validate environment
+// ENV validation
 if (!process.env.FIREBASE_SERVICE_ACCOUNT || !process.env.DISCORD_TOKEN) {
   console.error("❌ Missing FIREBASE_SERVICE_ACCOUNT or DISCORD_TOKEN.");
   process.exit(1);
 }
 
-// Initialize Discord client
+// Discord Client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates
   ]
 });
 
-// Load commands
+// Command loader (recursive)
 client.commands = new Collection();
-const walk = (dir) =>
-  fs.readdirSync(dir).flatMap(file => {
-    const fullPath = path.join(dir, file);
-    return fs.statSync(fullPath).isDirectory() ? walk(fullPath) : [fullPath];
-  });
 
-const commandFiles = walk(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'));
+const loadCommands = (dir = './commands') => {
+  const commandFiles = fs.readdirSync(path.join(__dirname, dir));
+  for (const file of commandFiles) {
+    const fullPath = path.join(__dirname, dir, file);
+    const stat = fs.lstatSync(fullPath);
+    if (stat.isDirectory()) {
+      loadCommands(path.join(dir, file));
+    } else if (file.endsWith('.js')) {
+      const command = require(fullPath);
+      if (command.name && typeof command.execute === 'function') {
+        client.commands.set(command.name, command);
+      } else {
+        console.warn(`⚠️ Invalid command format in ${file}`);
+      }
+    }
+  }
+};
+loadCommands();
 
-for (const file of commandFiles) {
-  const command = require(file);
-  if (command.name && typeof command.execute === 'function') {
-    client.commands.set(command.name, command);
-  } else {
-    console.warn(`⚠️ Invalid command format in ${file}`);
+// Load Events
+const eventFiles = fs.readdirSync(path.join(__dirname, 'events')).filter(file => file.endsWith('.js'));
+for (const file of eventFiles) {
+  const event = require(`./events/${file}`);
+  if (event.name === 'voiceStateUpdate') {
+    client.on('voiceStateUpdate', (...args) => event.execute(...args, client, db));
   }
 }
+
+// On Ready
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// Message handler
+// Message Create
 client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
 
-  // Get prefix from DB
+  // Prefix
   const guildRef = db.collection('config').doc(`guild_${message.guild.id}`);
   const doc = await guildRef.get();
   const guildConfig = doc.exists ? doc.data() : {};
@@ -55,7 +68,7 @@ client.on('messageCreate', async (message) => {
 
   if (!message.content.startsWith(prefix)) return;
 
-  // Parse command
+  // Parse Command
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const commandName = args.shift().toLowerCase();
   const command = client.commands.get(commandName);
@@ -64,13 +77,13 @@ client.on('messageCreate', async (message) => {
   if (command) {
     try {
       await command.execute(message, args, db);
-    } catch (error) {
-      console.error(`❌ Error running ${commandName}:`, error);
+    } catch (err) {
+      console.error(`❌ Error in command ${commandName}:`, err);
       message.reply('There was an error executing that command.');
     }
   }
 
-  // XP tracking
+  // XP Tracking
   try {
     const configRef = db.collection('config').doc('xp');
     const configSnap = await configRef.get();
@@ -81,28 +94,30 @@ client.on('messageCreate', async (message) => {
 
     const channelId = message.channel.id;
 
+    // Skip if blacklisted
     if (config.blacklist?.users?.includes(userId)) return;
-
     const member = await message.guild.members.fetch(userId);
     if (member.roles.cache.some(role => config.blacklist.roles?.includes(role.id))) return;
 
+    // If no enabledTextChannels specified, default to allow all
     const useChannelLimit = Array.isArray(config.enabledTextChannels) && config.enabledTextChannels.length > 0;
     if (useChannelLimit && !config.enabledTextChannels.includes(channelId)) return;
 
+    // Fetch Player
     const userRef = db.collection('players').doc(userId);
     const userSnap = await userRef.get();
     const userData = userSnap.exists ? userSnap.data() : {
       name: message.author.username,
       xp: 0,
       currency: 0,
-      blacklisted: false,
-      voiceTime: 0
+      voiceXp: 0,
+      lastMessage: null,
+      multiplier: 1
     };
 
     let multiplier = 1;
     if (config.globalMultiplier) multiplier *= config.globalMultiplier;
     if (userData.multiplier) multiplier *= userData.multiplier;
-
     if (userData.inventory) {
       for (const item of userData.inventory) {
         if (item.type === 'xpBoost') multiplier *= item.multiplier || 1;
@@ -111,10 +126,10 @@ client.on('messageCreate', async (message) => {
 
     const xpEarned = Math.floor((Math.random() * 5 + 1) * multiplier);
     userData.xp += xpEarned;
-    userData.currency = Math.floor(userData.xp / 3);
+    userData.currency = Math.floor((userData.xp + (userData.voiceXp || 0)) / 3);
     userData.lastMessage = new Date();
 
-    await userRef.set(userData);
+    await userRef.set(userData, { merge: true });
   } catch (err) {
     console.error('❌ XP tracking error:', err);
   }
