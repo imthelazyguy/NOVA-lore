@@ -23,19 +23,22 @@ const client = new Client({
 
 // Load commands
 client.commands = new Collection();
-const commandFiles = fs
-  .readdirSync(path.join(__dirname, 'commands'))
-  .filter(file => file.endsWith('.js'));
+const walk = (dir) =>
+  fs.readdirSync(dir).flatMap(file => {
+    const fullPath = path.join(dir, file);
+    return fs.statSync(fullPath).isDirectory() ? walk(fullPath) : [fullPath];
+  });
+
+const commandFiles = walk(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'));
 
 for (const file of commandFiles) {
-  const command = require(`./commands/${file}`);
+  const command = require(file);
   if (command.name && typeof command.execute === 'function') {
     client.commands.set(command.name, command);
   } else {
     console.warn(`⚠️ Invalid command format in ${file}`);
   }
 }
-
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
