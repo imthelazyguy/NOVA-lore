@@ -1,57 +1,37 @@
-const { EmbedBuilder } = require('discord.js');
+// src/commands/economy/rank.js
+const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require('discord.js');
+const { getRankCard } = require('../../utils/rankCard');
 
 module.exports = {
-  name: 'rank',
-  description: 'Shows your rank and XP stats',
-  async execute(message, args, db) {
+  data: new SlashCommandBuilder()
+    .setName('rank')
+    .setDescription('Displays your rank card.'),
+
+  async execute(ctxOrMsg, args, db) {
+    const isSlash = !!ctxOrMsg.isCommand;
+    const user = isSlash ? ctxOrMsg.user : ctxOrMsg.author;
+    const reply = isSlash
+      ? (m) => ctxOrMsg.reply(m)
+      : (m) => ctxOrMsg.reply(m);
+
     try {
-      const userId = message.author.id;
-      const guildId = message.guild.id;
-      const userRef = db.collection('players').doc(userId);
-      const userSnap = await userRef.get();
+      const userRef = db.collection('players').doc(user.id);
+      const snap = await userRef.get();
+      if (!snap.exists) return reply("You have no XP yet.");
 
-      if (!userSnap.exists) {
-        return message.reply('You have no XP yet. Start chatting or talking in voice channels!');
-      }
-
-      const userData = userSnap.data();
-      const userXP = userData.xp || 0;
-      const voiceXP = userData.voiceXp || 0;
-      const totalXP = userXP + voiceXP;
-
-      // Fetch all players to calculate rank
-      const allPlayersSnap = await db.collection('players').get();
-      const players = [];
-      allPlayersSnap.forEach(doc => {
-        const data = doc.data();
-        const total = (data.xp || 0) + (data.voiceXp || 0);
-        players.push({ id: doc.id, total });
-      });
-
-      players.sort((a, b) => b.total - a.total);
-      const rank = players.findIndex(p => p.id === userId) + 1;
-
+      const data = snap.data();
+      const buffer = await getRankCard(user, data);
+      const attachment = new AttachmentBuilder(buffer, { name: 'rank.png' });
       const embed = new EmbedBuilder()
-        .setColor('#00ff99')
-        .setAuthor({ name: `${message.author.username}'s Rank`, iconURL: message.author.displayAvatarURL() })
-        .addFields(
-          { name: 'Total XP', value: `${totalXP}`, inline: true },
-          { name: 'Chat XP', value: `${userXP}`, inline: true },
-          { name: 'Voice XP', value: `${voiceXP}`, inline: true },
-          { name: 'Your Rank', value: `#${rank}`, inline: false }
-        )
-        .setFooter({ text: `Leveling System - NOVA Bot`, iconURL: message.guild.iconURL() })
-        .setTimestamp();
+        .setTitle(`${user.username}'s Rank`)
+        .setImage('attachment://rank.png')
+        .setColor('#5865F2');
 
-      // Optional: add background or cosmetics
-      if (userData.profileBackground) {
-        embed.setImage(userData.profileBackground);
-      }
-
-      return message.channel.send({ embeds: [embed] });
+      if (isSlash) await ctxOrMsg.reply({ embeds:[embed], files:[attachment] });
+      else ctxOrMsg.reply({ embeds:[embed], files:[attachment] });
     } catch (err) {
-      console.error('❌ Error in rank command:', err);
-      return message.reply('There was an error fetching your rank. Please try again later.');
+      console.error(err);
+      reply('Error fetching rank.');
     }
   }
 };
