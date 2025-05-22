@@ -2,38 +2,56 @@ const { EmbedBuilder } = require('discord.js');
 
 module.exports = {
   name: 'rank',
-  description: 'View your XP, level, and equipped cosmetics.',
+  description: 'Shows your rank and XP stats',
   async execute(message, args, db) {
-    const userId = message.author.id;
-    const userRef = db.collection('players').doc(userId);
-    const userSnap = await userRef.get();
+    try {
+      const userId = message.author.id;
+      const guildId = message.guild.id;
+      const userRef = db.collection('players').doc(userId);
+      const userSnap = await userRef.get();
 
-    if (!userSnap.exists) {
-      return message.reply('❌ You don’t have a profile yet. Start chatting or join a voice channel!');
+      if (!userSnap.exists) {
+        return message.reply('You have no XP yet. Start chatting or talking in voice channels!');
+      }
+
+      const userData = userSnap.data();
+      const userXP = userData.xp || 0;
+      const voiceXP = userData.voiceXp || 0;
+      const totalXP = userXP + voiceXP;
+
+      // Fetch all players to calculate rank
+      const allPlayersSnap = await db.collection('players').get();
+      const players = [];
+      allPlayersSnap.forEach(doc => {
+        const data = doc.data();
+        const total = (data.xp || 0) + (data.voiceXp || 0);
+        players.push({ id: doc.id, total });
+      });
+
+      players.sort((a, b) => b.total - a.total);
+      const rank = players.findIndex(p => p.id === userId) + 1;
+
+      const embed = new EmbedBuilder()
+        .setColor('#00ff99')
+        .setAuthor({ name: `${message.author.username}'s Rank`, iconURL: message.author.displayAvatarURL() })
+        .addFields(
+          { name: 'Total XP', value: `${totalXP}`, inline: true },
+          { name: 'Chat XP', value: `${userXP}`, inline: true },
+          { name: 'Voice XP', value: `${voiceXP}`, inline: true },
+          { name: 'Your Rank', value: `#${rank}`, inline: false }
+        )
+        .setFooter({ text: `Leveling System - NOVA Bot`, iconURL: message.guild.iconURL() })
+        .setTimestamp();
+
+      // Optional: add background or cosmetics
+      if (userData.profileBackground) {
+        embed.setImage(userData.profileBackground);
+      }
+
+      return message.channel.send({ embeds: [embed] });
+    } catch (err) {
+      console.error('❌ Error in rank command:', err);
+      return message.reply('There was an error fetching your rank. Please try again later.');
     }
-
-    const data = userSnap.data();
-    const chatXP = data.chatXP || 0;
-    const voiceXP = data.voiceXP || 0;
-    const totalXP = chatXP + voiceXP;
-    const level = data.level || Math.floor(totalXP / 500);
-    const currency = data.currency || 0;
-
-    const embed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setTitle(`🏅 Rank — ${data.name || message.author.username}`)
-      .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
-      .setDescription(data.bio || '')
-      .addFields(
-        { name: 'Level', value: `${level}`, inline: true },
-        { name: 'Total XP', value: `${totalXP}`, inline: true },
-        { name: 'Chat XP', value: `${chatXP}`, inline: true },
-        { name: 'Voice XP', value: `${voiceXP}`, inline: true },
-        { name: 'Currency', value: `${currency} coins`, inline: true },
-        { name: 'Background', value: `${data?.equipped?.background || 'None'}`, inline: true }
-      )
-      .setFooter({ text: 'Keep grinding to level up!' });
-
-    return message.channel.send({ embeds: [embed] });
   }
 };
