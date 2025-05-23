@@ -1,10 +1,10 @@
-// src/index.js
-const { 
-  Client, 
-  GatewayIntentBits, 
-  Collection, 
-  REST, 
-  Routes 
+
+const {
+  Client,
+  GatewayIntentBits,
+  Collection,
+  REST,
+  Routes
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -17,7 +17,7 @@ if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
   process.exit(1);
 }
 
-// Create client
+// Initialize client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -27,7 +27,6 @@ const client = new Client({
   ]
 });
 
-// Collections
 client.commands = new Collection();
 const slashCommandData = [];
 
@@ -39,78 +38,74 @@ function loadCommands(dir) {
     if (fs.statSync(full).isDirectory()) {
       loadCommands(full);
     } else if (file.endsWith('.js')) {
-      const cmd = require(full);
-      // Register for prefix
-      if (cmd.name && typeof cmd.execute === 'function') {
-        client.commands.set(cmd.name, cmd);
+      const command = require(full);
+      if (command.name && typeof command.execute === 'function') {
+        client.commands.set(command.name, command);
       }
       if (command.data && typeof command.data.name === 'string') {
-    // Fallback for missing description
-    if (!command.data.description) {
-      console.warn(`⚠️ Command "${command.data.name}" missing description. Adding default.`);
-      command.data.setDescription('No description provided.');
-    }
-      // Register slash data
-      if (cmd.data) {
-        slashCommandData.push(cmd.data.toJSON());
+        if (!command.data.description) {
+          console.warn(`⚠️ Command "${command.data.name}" missing description. Adding default.`);
+          command.data.setDescription('No description provided.');
+        }
+        slashCommandData.push(command.data.toJSON());
       }
     }
   }
 }
 loadCommands(path.join(__dirname, 'commands'));
 
-// Register slash commands on ready
+// Register slash commands
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: slashCommandData }
     );
-    console.log('✅ Slash commands registered.');
+    console.log('✅ Slash commands registered');
   } catch (err) {
-    console.error('❌ Error registering slash commands:', err);
+    console.error('❌ Failed to register slash commands:', err);
   }
 });
 
 // Handle slash interactions
 client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
-  const cmd = client.commands.get(interaction.commandName);
-  if (!cmd || !cmd.data) return;
+  const command = client.commands.get(interaction.commandName);
+  if (!command || typeof command.execute !== 'function') return;
   try {
-    await cmd.execute(interaction, [], db);
+    await command.execute(interaction, [], db, true);
   } catch (err) {
-    console.error(`❌ Slash ${interaction.commandName} error:`, err);
-    await interaction.reply({ content: 'There was an error.', ephemeral: true });
+    console.error(`❌ Slash error in ${interaction.commandName}:`, err);
+    await interaction.reply({ content: 'There was an error executing that command.', ephemeral: true });
   }
 });
 
-// Handle legacy prefix
+// Handle prefix commands
 client.on('messageCreate', async message => {
   if (!message.guild || message.author.bot) return;
 
-  // fetch or default prefix
   const guildRef = db.collection('config').doc(`guild_${message.guild.id}`);
   const guildSnap = await guildRef.get();
   const prefix = (guildSnap.exists && guildSnap.data().prefix) || '!';
 
   if (!message.content.startsWith(prefix)) return;
-  const [cmdName, ...args] = message.content.slice(prefix.length).trim().split(/ +/);
-  const command = client.commands.get(cmdName.toLowerCase());
-  if (!command || command.data == null) return; // skip slash-only commands
+
+  const args = message.content.slice(prefix.length).trim().split(/ +/);
+  const commandName = args.shift().toLowerCase();
+  const command = client.commands.get(commandName);
+  if (!command || typeof command.execute !== 'function') return;
 
   try {
-    await command.execute(message, args, db);
+    await command.execute(message, args, db, false);
   } catch (err) {
-    console.error(`❌ Prefix ${cmdName} error:`, err);
+    console.error(`❌ Prefix error in ${commandName}:`, err);
     message.reply('There was an error executing that command.');
   }
 });
 
-// Load voice event (example)
+// Voice tracking
 const voiceEvent = require('./events/voiceStateUpdate');
 client.on('voiceStateUpdate', (...args) => voiceEvent.execute(...args, client, db));
 
