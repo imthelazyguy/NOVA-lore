@@ -44,6 +44,12 @@ function loadCommands(dir) {
       if (cmd.name && typeof cmd.execute === 'function') {
         client.commands.set(cmd.name, cmd);
       }
+      if (command.data && typeof command.data.name === 'string') {
+    // Fallback for missing description
+    if (!command.data.description) {
+      console.warn(`⚠️ Command "${command.data.name}" missing description. Adding default.`);
+      command.data.setDescription('No description provided.');
+    }
       // Register slash data
       if (cmd.data) {
         slashCommandData.push(cmd.data.toJSON());
